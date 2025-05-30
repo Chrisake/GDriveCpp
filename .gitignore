@@ -1,0 +1,7 @@
+
+.vs/
+
+build/
+
+/testApp/.secrets/*
+!/testApp/.secrets/README.md

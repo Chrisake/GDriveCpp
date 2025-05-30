@@ -1,0 +1,15 @@
+BasedOnStyle: Google
+
+---
+Language: Cpp
+IndentWidth: 4
+PointerAlignment: Right
+NamespaceIndentation: All
+AccessModifierOffset: -2
+ColumnLimit: 120
+SeparateDefinitionBlocks: Always
+KeepEmptyLines:
+  AtStartOfFile: false
+  AtEndOfFile: false
+  AtStartOfBlock: false
+MaxEmptyLinesToKeep: 2
