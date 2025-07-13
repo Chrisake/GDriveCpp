@@ -1,11 +1,73 @@
 #include <cpr/cpr.h>
+
+#include <format>
 #include <nlohmann/json.hpp>
 
-#include "constants.hpp"
 #include "GDriveCpp/gDrive.h"
 #include "GDriveCpp/gFile.h"
+#include "constants.hpp"
+#include "logging.hpp"
 
 namespace GDrive {
+    std::optional<GFileList> GFileList::QueryDirectory(std::weak_ptr<GCloud::Authentication::OAuthAgent> client,
+                                                       std::shared_ptr<const GFile> root,
+                                                       const std::string& searchPath) {
+        std::filesystem::path path(searchPath);
+        std::filesystem::path currentPath;
+        std::unique_ptr<GFileList> nextDir;
+        for (auto it = path.begin(); it != path.end(); ++it) {
+            bool isLast = std::next(it) == path.end();
+            if (it->empty() && !isLast) continue;  // Skip empty parts
+            if (*it == ".") continue;              // Skip current directory
+            if (*it == "..") {
+                spdlog::error("Cannot go up directories. Not implemented!");
+                return std::nullopt;
+            } else {
+                if (!root) {
+                    nextDir = std::make_unique<GFileList>(
+                        client, GFileListRequest{
+                                    .corpora = "user",
+                                    .includeItemsFromAllDrives = false,
+                                    .orderBy = "createdTime desc",
+                                    .pageSize = 1,
+                                    .q = std::format("name = '{}' and mimeType = 'application/vnd.google-apps.folder'",
+                                                     it->generic_string()),
+                                    .supportsAllDrives = true,
+                                    .fields = "nextPageToken, files(name, id, createdTime)"});
+
+                } else {
+                    if (!root->id.has_value()) {
+                        spdlog::error("Root file ID is missing, cannot query directory");
+                        return std::nullopt;
+                    }
+                    std::string q = std::format("'{}' in parents", root->id.value());
+                    if (!isLast) q += " and mimeType = 'application/vnd.google-apps.folder'";
+                    if (!it->empty()) q += std::format(" and name = '{}'", it->generic_string());
+
+                    nextDir = std::make_unique<GFileList>(
+                        client, GFileListRequest{.corpora = "user",
+                                                 .includeItemsFromAllDrives = false,
+                                                 .orderBy = "createdTime desc",
+                                                 .pageSize = (isLast) ? 20u : 1u,
+                                                 .q = q,
+                                                 .supportsAllDrives = true,
+                                                 .fields = "nextPageToken, files(name, id, createdTime)"});
+                }
+                if (nextDir->files.empty()) {
+                    spdlog::error("Directory '{}' not found in Google Drive under {}", it->generic_string(),
+                                  currentPath.generic_string());
+                }
+                if (!nextDir->files[0]->id.has_value()) {
+                    spdlog::error("Directory ID is missing for '{}'", it->generic_string());
+                    return std::nullopt;
+                }
+                root = nextDir->files[0];
+                currentPath /= *it;
+            }
+        }
+        return *nextDir.get();
+    }
+
     GFileList::GFileList(std::weak_ptr<GCloud::Authentication::OAuthAgent> client, const GFileListRequest& request)
         : _client(client) {
         auto params = cpr::Parameters{};
@@ -28,8 +90,8 @@ namespace GDrive {
                      cpr::Header{{"Authorization", "Bearer " + _client.lock()->getAccessToken()}}, cpr::VerifySsl(0));
 
         if (response.status_code != 200) {
-            throw std::runtime_error(
-                std::format("Failed to fetch file list: {} - {}\n{}", response.status_code, response.reason, response.text));
+            throw std::runtime_error(std::format("Failed to fetch file list: {} - {}\n{}", response.status_code,
+                                                 response.reason, response.text));
         }
         auto jsonResponse = nlohmann::json::parse(response.text);
         if (!jsonResponse.contains("files")) {
@@ -43,10 +105,14 @@ namespace GDrive {
         for (const nlohmann::json& file : jsonResponse["files"]) {
             std::shared_ptr<GFile> f = std::make_shared<GFile>(_client);
             for (auto& it : file.items()) {
-                if (it.value().is_string()) {
-                    f->setStringField(it.key(), it.value().get<std::string>());
-                } else if (it.value().is_boolean()) {
-                    f->setBoolField(it.key(), it.value().get<bool>());
+                try {
+                    if (it.value().is_string()) {
+                        f->setStringField(it.key(), it.value().get<std::string>());
+                    } else if (it.value().is_boolean()) {
+                        f->setBoolField(it.key(), it.value().get<bool>());
+                    }
+                } catch (const std::exception& e) {
+                    spdlog::error("Error setting field '{}': {}", it.key(), e.what());
                 }
             }
             files.push_back(f);
@@ -121,8 +187,8 @@ namespace GDrive {
 
     void GFile::setStringField(const std::string_view& field, const std::string_view& value) {
         std::string f;
-        f.reserve(field.size());
-        std::transform(field.begin(), field.end(), std::back_inserter(f), ::tolower);
+        f.resize(field.size());
+        std::transform(field.begin(), field.end(), f.begin(), ::tolower);
         auto it = _stringFieldsSetterMap.find(f);
         if (it != _stringFieldsSetterMap.end()) {
             it->second(*this, value);
@@ -133,8 +199,8 @@ namespace GDrive {
 
     void GFile::setBoolField(const std::string_view& field, bool value) {
         std::string f;
-        f.reserve(field.size());
-        std::transform(field.begin(), field.end(), std::back_inserter(f), ::tolower);
+        f.resize(field.size());
+        std::transform(field.begin(), field.end(), f.begin(), ::tolower);
         auto it = _boolFieldsSetterMap.find(f);
         if (it != _boolFieldsSetterMap.end()) {
             it->second(*this, value);

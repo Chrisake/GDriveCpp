@@ -15,7 +15,7 @@ namespace utils::data {
             // throw std::runtime_error(std::format("Failed to get environment variable: {}", varname));
             return std::string();
         }
-        std::string result(buf, sz);
+        std::string result(buf, strlen(buf));
         free(buf);
         return result;
     }

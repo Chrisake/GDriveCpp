@@ -179,6 +179,9 @@ namespace GDrive {
         std::weak_ptr<GCloud::Authentication::OAuthAgent> _client;
 
       public:
+        static std::optional<GFileList> QueryDirectory(std::weak_ptr<GCloud::Authentication::OAuthAgent> client,
+                                                       std::shared_ptr<const GFile> root,
+                                                       const std::string& searchPath);
         std::vector<std::shared_ptr<GFile>> files;
         GFileList(std::weak_ptr<GCloud::Authentication::OAuthAgent> client, const GFileListRequest& request);
         void print(std::ostream& os);

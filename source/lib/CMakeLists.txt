@@ -4,16 +4,21 @@ add_library(${GDRIVE_DLL} SHARED
   "source/callbackListener.cpp" 
   "source/file.cpp"
   "source/cache.cpp"
+  "source/queryBuilder.cpp"
 )
 
-# Copy public include headers to target directory
-file(COPY "${GDRIVECPP_SOURCE_DIR}/source/public_include/" DESTINATION "${CMAKE_BINARY_DIR}/GDriveCpp/public_include")
+# Copy public include headers to target directory after build
+add_custom_command(TARGET ${GDRIVE_DLL} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${GDRIVECPP_SOURCE_DIR}/source/public_include/"
+    "${CMAKE_BINARY_DIR}/GDriveCpp/public_include"
+)
 
 target_include_directories(${GDRIVE_DLL} 
-    PRIVATE  
+    PRIVATE
       "${GDRIVECPP_SOURCE_DIR}/source/lib/include"
     PUBLIC
-      "${CMAKE_BINARY_DIR}/GDriveCpp/public_include"
+      "${GDRIVECPP_SOURCE_DIR}/source/public_include/"
 )
 
 add_compile_definitions(${GDRIVE_DLL}
@@ -27,6 +32,7 @@ target_link_libraries(${GDRIVE_DLL}
   Drogon::Drogon
   nlohmann_json::nlohmann_json
   Iconv::Iconv
+  spdlog::spdlog
   ${LIBUTILS_OBJ}
 )
 

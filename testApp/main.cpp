@@ -1,12 +1,12 @@
-
+#include <format>
 #include <iostream>
 #include <string>
 
 #include "GDriveCpp/gDrive.h"
 #include "GDriveCpp/gFile.h"
-#include "logging.hpp"
-
+#include "GDriveCpp/queryBuilder.h"
 #include "google_api_key.hpp"
+#include "logging.hpp"
 
 int main() {
     utils::logging::LogConsole logConsole(
@@ -20,13 +20,22 @@ int main() {
         std::string token = client->getAccessToken();
         std::cout << "Authentication successful!" << std::endl;
         std::cout << "Token: " << token << std::endl;
-        GDrive::GFileList list(client, {.corpora = "user",
-                                        .includeItemsFromAllDrives = false,
-                                        .orderBy = "createdTime desc",
-                                        .pageSize = 10,
-                                        .q = "'17NYFkn56HVNGp8twCd-cls5Rb9HM_hwI' in parents",
-                                        .supportsAllDrives = true,
-                                        .fields = "nextPageToken, files(name, id, createdTime)"});
+
+        std::string q = GDrive::QueryBuilder()
+                            .And()
+                                .AddCondition("name", GDrive::QueryBuilder::ComparisonOperator::Equal, "Server1")
+                                .AddCondition("field2", GDrive::QueryBuilder::ComparisonOperator::Equal, "value2")
+                                .Or()
+                                    .AddCondition("field3", GDrive::QueryBuilder::ComparisonOperator::Equal, "value3")
+                                    .AddCondition("field4", GDrive::QueryBuilder::ComparisonOperator::Equal, "value4")
+                                .EndBlock()
+                            .EndBlock()
+                            .Build();
+
+        spdlog::info("Query: {}", q);
+
+        GDrive::GFileList list = GDrive::GFileList::QueryDirectory(client, nullptr, "tac/Server1/").value();
+
         list.print(std::cout);
         if (!list.files.empty()) {
             list.files[0]->download();
